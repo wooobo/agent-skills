@@ -1,0 +1,137 @@
+{
+  "metadata": {
+    "skill_name": "japanese-teacher",
+    "skill_path": "/Users/slow/.claude/skills/japanese-teacher",
+    "executor_model": "claude-opus-4-6",
+    "analyzer_model": "claude-opus-4-6",
+    "timestamp": "2026-04-12T12:25:26Z",
+    "evals_run": ["first-lesson", "review-and-new", "quiz-request"],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_name": "first-lesson",
+      "configuration": "with_skill",
+      "pass_rate": 1.0,
+      "passed": 8,
+      "total": 8,
+      "time_seconds": 93.3,
+      "tokens": 21310,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필을 검색/확인한다", "passed": true},
+        {"text": "학생 레벨을 N5로 판정하고 knowflow에 프로필을 저장한다", "passed": true},
+        {"text": "3~5개의 새 단어를 가르친다", "passed": true},
+        {"text": "각 단어에 후리가나와 한국어 뜻이 병기된다", "passed": true},
+        {"text": "예문이 포함된다", "passed": true},
+        {"text": "학습한 단어를 knowflow에 개별 저장한다", "passed": true},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": true},
+        {"text": "연습 문제가 포함된다", "passed": true}
+      ]
+    },
+    {
+      "eval_name": "first-lesson",
+      "configuration": "without_skill",
+      "pass_rate": 0.375,
+      "passed": 3,
+      "total": 8,
+      "time_seconds": 38.8,
+      "tokens": 12032,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필을 검색/확인한다", "passed": false},
+        {"text": "학생 레벨을 N5로 판정하고 knowflow에 프로필을 저장한다", "passed": false},
+        {"text": "3~5개의 새 단어를 가르친다", "passed": true},
+        {"text": "각 단어에 후리가나와 한국어 뜻이 병기된다", "passed": true},
+        {"text": "예문이 포함된다", "passed": true},
+        {"text": "학습한 단어를 knowflow에 개별 저장한다", "passed": false},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": false},
+        {"text": "연습 문제가 포함된다", "passed": false}
+      ]
+    },
+    {
+      "eval_name": "review-and-new",
+      "configuration": "with_skill",
+      "pass_rate": 1.0,
+      "passed": 8,
+      "total": 8,
+      "time_seconds": 97.1,
+      "tokens": 21000,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필을 검색한다", "passed": true},
+        {"text": "knowflow에서 수업기록/학습단어를 검색한다", "passed": true},
+        {"text": "knowflow에서 복습필요 항목을 검색한다", "passed": true},
+        {"text": "기존 데이터가 없는 상황을 자연스럽게 처리한다", "passed": true},
+        {"text": "새 단어 3~5개를 가르친다", "passed": true},
+        {"text": "학습한 단어를 knowflow에 저장한다", "passed": true},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": true},
+        {"text": "i+1 교수법이 적용된다", "passed": true}
+      ]
+    },
+    {
+      "eval_name": "review-and-new",
+      "configuration": "without_skill",
+      "pass_rate": 0.125,
+      "passed": 1,
+      "total": 8,
+      "time_seconds": 31.9,
+      "tokens": 11923,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필을 검색한다", "passed": false},
+        {"text": "knowflow에서 수업기록/학습단어를 검색한다", "passed": false},
+        {"text": "knowflow에서 복습필요 항목을 검색한다", "passed": false},
+        {"text": "기존 데이터가 없는 상황을 자연스럽게 처리한다", "passed": false},
+        {"text": "새 단어 3~5개를 가르친다", "passed": true},
+        {"text": "학습한 단어를 knowflow에 저장한다", "passed": false},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": false},
+        {"text": "i+1 교수법이 적용된다", "passed": false}
+      ]
+    },
+    {
+      "eval_name": "quiz-request",
+      "configuration": "with_skill",
+      "pass_rate": 1.0,
+      "passed": 6,
+      "total": 6,
+      "time_seconds": 78.4,
+      "tokens": 19953,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필과 학습 데이터를 검색한다", "passed": true},
+        {"text": "학습 데이터 유무에 따라 적절한 퀴즈를 구성한다", "passed": true},
+        {"text": "다양한 문제 유형을 사용한다", "passed": true},
+        {"text": "채점 기준이나 정답 확인 방법이 제시된다", "passed": true},
+        {"text": "퀴즈 결과에 따른 후속 계획이 언급된다", "passed": true},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": true}
+      ]
+    },
+    {
+      "eval_name": "quiz-request",
+      "configuration": "without_skill",
+      "pass_rate": 0.167,
+      "passed": 1,
+      "total": 6,
+      "time_seconds": 37.1,
+      "tokens": 12331,
+      "expectations": [
+        {"text": "knowflow에서 학생 프로필과 학습 데이터를 검색한다", "passed": false},
+        {"text": "학습 데이터 유무에 따라 적절한 퀴즈를 구성한다", "passed": false},
+        {"text": "다양한 문제 유형을 사용한다", "passed": true},
+        {"text": "채점 기준이나 정답 확인 방법이 제시된다", "passed": false},
+        {"text": "퀴즈 결과에 따른 후속 계획이 언급된다", "passed": false},
+        {"text": "수업기록을 knowflow에 저장한다", "passed": false}
+      ]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {"mean_pass_rate": 1.0, "mean_time": 89.6, "mean_tokens": 20754},
+    "without_skill": {"mean_pass_rate": 0.222, "mean_time": 35.9, "mean_tokens": 12095},
+    "delta": {
+      "pass_rate": "+77.8%",
+      "time_seconds": "+53.7s",
+      "tokens": "+8659"
+    }
+  },
+  "notes": [
+    "스킬 적용 시 모든 assertion 100% 통과",
+    "베이스라인은 knowflow 연동 관련 assertion 모두 실패 (예상대로)",
+    "스킬 적용 시 토큰/시간이 약 2배 소요되나, knowflow 호출 오버헤드가 주원인"
+  ]
+}

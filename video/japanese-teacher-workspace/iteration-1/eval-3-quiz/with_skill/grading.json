@@ -1,0 +1,13 @@
+{
+  "eval_id": 3,
+  "run_id": "eval-3-with_skill",
+  "configuration": "with_skill",
+  "expectations": [
+    {"text": "knowflow에서 학생 프로필과 학습 데이터를 검색한다", "passed": true, "evidence": "list_knowledge + search_docs 5회 호출 (프로필, 수업기록, 복습필요, 단어, 문법)"},
+    {"text": "학습 데이터 유무에 따라 적절한 퀴즈를 구성한다", "passed": true, "evidence": "학습 데이터 없음 확인 후 '기초 실력 확인 퀴즈'(진단 퀴즈)로 전환"},
+    {"text": "다양한 문제 유형을 사용한다", "passed": true, "evidence": "읽기 맞추기, 한→일 변환, 빈칸 채우기(객관식), 읽기(객관식) 등 4가지 유형"},
+    {"text": "채점 기준이나 정답 확인 방법이 제시된다", "passed": true, "evidence": "채점 가이드 테이블 + 점수별 해석 (5/5, 3-4/5 등)"},
+    {"text": "퀴즈 결과에 따른 후속 계획이 언급된다", "passed": true, "evidence": "'결과를 알려주세요! 틀린 부분은 복습 우선 대상으로 등록' 등 후속 계획 제시"},
+    {"text": "수업기록을 knowflow에 저장한다", "passed": true, "evidence": "[수업기록] 진단 퀴즈 기록 저장 완료"}
+  ]
+}

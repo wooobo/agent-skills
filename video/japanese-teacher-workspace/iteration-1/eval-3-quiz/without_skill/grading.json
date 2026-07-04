@@ -1,0 +1,13 @@
+{
+  "eval_id": 3,
+  "run_id": "eval-3-without_skill",
+  "configuration": "without_skill",
+  "expectations": [
+    {"text": "knowflow에서 학생 프로필과 학습 데이터를 검색한다", "passed": false, "evidence": "knowflow 사용 없음"},
+    {"text": "학습 데이터 유무에 따라 적절한 퀴즈를 구성한다", "passed": false, "evidence": "'뭘 공부했는지 모르니까 일반적인 퀴즈' - 개인화 없음"},
+    {"text": "다양한 문제 유형을 사용한다", "passed": true, "evidence": "히라가나 읽기, 단어 뜻, 빈칸 채우기, 한→일 변환, 숫자 5가지 유형"},
+    {"text": "채점 기준이나 정답 확인 방법이 제시된다", "passed": false, "evidence": "'답을 말해주면 채점해줄게'만 있고 정답/기준 미제시"},
+    {"text": "퀴즈 결과에 따른 후속 계획이 언급된다", "passed": false, "evidence": "후속 계획 없음"},
+    {"text": "수업기록을 knowflow에 저장한다", "passed": false, "evidence": "저장 없음"}
+  ]
+}

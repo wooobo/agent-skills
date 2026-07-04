@@ -1,0 +1,15 @@
+{
+  "eval_id": 2,
+  "run_id": "eval-2-without_skill",
+  "configuration": "without_skill",
+  "expectations": [
+    {"text": "knowflow에서 학생 프로필을 검색한다", "passed": false, "evidence": "knowflow 사용 없음"},
+    {"text": "knowflow에서 수업기록/학습단어를 검색한다", "passed": false, "evidence": "knowflow 사용 없음"},
+    {"text": "knowflow에서 복습필요 항목을 검색한다", "passed": false, "evidence": "knowflow 사용 없음"},
+    {"text": "기존 데이터가 없는 상황을 자연스럽게 처리한다", "passed": false, "evidence": "'이전 대화 내용을 기억하지 못합니다'로 단절감 발생"},
+    {"text": "새 단어 3~5개를 가르친다", "passed": true, "evidence": "8개 기본 명사 + 4개 표현을 테이블로 나열"},
+    {"text": "학습한 단어를 knowflow에 저장한다", "passed": false, "evidence": "저장 없음"},
+    {"text": "수업기록을 knowflow에 저장한다", "passed": false, "evidence": "저장 없음"},
+    {"text": "i+1 교수법이 적용된다", "passed": false, "evidence": "레벨 기반 커리큘럼 없이 일반적 단어 나열"}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "eval_id": 2,
+  "run_id": "eval-2-with_skill",
+  "configuration": "with_skill",
+  "expectations": [
+    {"text": "knowflow에서 학생 프로필을 검색한다", "passed": true, "evidence": "search_docs로 학생프로필 검색 - N5 레벨 확인"},
+    {"text": "knowflow에서 수업기록/학습단어를 검색한다", "passed": true, "evidence": "search_docs로 수업기록, 단어 검색 수행"},
+    {"text": "knowflow에서 복습필요 항목을 검색한다", "passed": true, "evidence": "search_docs query=복습필요 호출"},
+    {"text": "기존 데이터가 없는 상황을 자연스럽게 처리한다", "passed": true, "evidence": "'지난번에 레벨 체크만 하고 끝났던 것 같아요!'로 자연스럽게 연결"},
+    {"text": "새 단어 3~5개를 가르친다", "passed": true, "evidence": "5개 동사: 食べる, 飲む, 行く, 来る, 見る"},
+    {"text": "학습한 단어를 knowflow에 저장한다", "passed": true, "evidence": "5개 단어 각각 [단어] 태그로 add_knowledge 저장"},
+    {"text": "수업기록을 knowflow에 저장한다", "passed": true, "evidence": "[수업기록] 태그로 저장 완료"},
+    {"text": "i+1 교수법이 적용된다", "passed": true, "evidence": "히라가나 복습(i) 후 새 동사(+1) 도입, 行く vs 来る 비교설명, 조사 설명 포함"}
+  ]
+}

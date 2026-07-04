@@ -1,0 +1,15 @@
+{
+  "eval_id": 2,
+  "eval_name": "review-and-new",
+  "prompt": "지난번에 배운 거 복습하고 새 단어도 좀 알려줘",
+  "assertions": [
+    {"id": "a1", "text": "knowflow에서 학생 프로필을 검색한다"},
+    {"id": "a2", "text": "knowflow에서 수업기록/학습단어를 검색한다"},
+    {"id": "a3", "text": "knowflow에서 복습필요 항목을 검색한다"},
+    {"id": "a4", "text": "기존 데이터가 없는 상황을 자연스럽게 처리한다"},
+    {"id": "a5", "text": "새 단어 3~5개를 가르친다"},
+    {"id": "a6", "text": "학습한 단어를 knowflow에 저장한다"},
+    {"id": "a7", "text": "수업기록을 knowflow에 저장한다"},
+    {"id": "a8", "text": "i+1 교수법이 적용된다 (이미 아는 것 위에 새 요소 추가)"}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "eval_id": 1,
+  "run_id": "eval-1-with_skill",
+  "configuration": "with_skill",
+  "expectations": [
+    {"text": "knowflow에서 학생 프로필을 검색/확인한다", "passed": true, "evidence": "list_knowledge 호출하여 기존 프로필 없음 확인"},
+    {"text": "학생 레벨을 N5로 판정하고 knowflow에 프로필을 저장한다", "passed": true, "evidence": "add_knowledge로 [학생프로필] 레벨: N5 저장 완료"},
+    {"text": "3~5개의 새 단어를 가르친다", "passed": true, "evidence": "5개 단어: わたし, 学生, 食べる, 飲む, 水"},
+    {"text": "각 단어에 후리가나와 한국어 뜻이 병기된다", "passed": true, "evidence": "모든 단어에 읽기(がくせい 등)와 한국어 뜻 표기"},
+    {"text": "예문이 포함된다", "passed": true, "evidence": "각 단어마다 例文 포함 (朝ごはんを食べます 등)"},
+    {"text": "학습한 단어를 knowflow에 개별 저장한다", "passed": true, "evidence": "5개 단어 각각 add_knowledge로 [단어] 태그와 함께 저장"},
+    {"text": "수업기록을 knowflow에 저장한다", "passed": true, "evidence": "[수업기록] 태그로 수업 요약 저장 완료"},
+    {"text": "연습 문제가 포함된다", "passed": true, "evidence": "3개 연습 문제 (빈칸 채우기, 한→일 변환)"}
+  ]
+}
