@@ -29,7 +29,7 @@
 
 ## 스킬
 
-### `orchestrate` — herdr pane 기반 병렬 위임
+### `herdr-orchestrate` — herdr pane 기반 병렬 위임
 
 **목적**: 요청을 독립 단위로 쪼개고, 단위마다 워커 에이전트를 자기 몫의
 [herdr](https://github.com/wooobo/herdr) pane에 띄우고, 각자에게 필요한 맥락으로
@@ -78,7 +78,7 @@
 agent/
 ├── README.md
 ├── README.ko.md
-└── orchestrate/
+└── herdr-orchestrate/
     ├── SKILL.md                  정책과 0~5단계 흐름
     ├── scripts/
     │   └── orchestrate.mjs       spawn / prompt / unstick / status / collect

@@ -30,7 +30,7 @@ terminal panes, briefing them, watching them, and collecting what they produced.
 
 ## Skills
 
-### `orchestrate` - Parallel Delegation Over herdr Panes
+### `herdr-orchestrate` - Parallel Delegation Over herdr Panes
 
 **Purpose**: Split a request into independent units, spawn one worker agent per
 unit in its own [herdr](https://github.com/wooobo/herdr) pane, brief each with the
@@ -86,7 +86,7 @@ out", "second opinion", "cross-check".
 agent/
 ├── README.md
 ├── README.ko.md
-└── orchestrate/
+└── herdr-orchestrate/
     ├── SKILL.md                  policy and the 0-5 flow
     ├── scripts/
     │   └── orchestrate.mjs       spawn / prompt / unstick / status / collect

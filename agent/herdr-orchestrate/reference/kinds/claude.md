@@ -67,6 +67,6 @@ Claude Code는 transcript를 alternate screen에 렌더링해서 herdr host scro
 
 **중첩 오케스트레이션 금지**
 
-claude 워커에게 "다른 에이전트를 띄워라"라고 시키지 마라. 워커가 `orchestrate`를 다시 호출하면
+claude 워커에게 "다른 에이전트를 띄워라"라고 시키지 마라. 워커가 `herdr-orchestrate`를 다시 호출하면
 pane이 기하급수로 늘고 누가 무엇을 소유하는지 추적 불가능해진다.
 브리핑에 명시한다: "다른 에이전트를 스폰하지 마라. 배정된 작업만 직접 수행해라."

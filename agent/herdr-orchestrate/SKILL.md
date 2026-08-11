@@ -1,5 +1,5 @@
 ---
-name: orchestrate
+name: herdr-orchestrate
 description: >
   Herdr pane에 워커 코딩 에이전트를 띄워 작업을 병렬 위임하고 결과를 파일로 회수한다.
   여러 저장소·여러 작업을 동시에 진행하거나("병렬로", "따로 띄워서", "A랑 B 같이"),
@@ -10,7 +10,7 @@ disable-model-invocation: true
 allowed-tools: Bash(echo*), Bash(herdr agent list*), Bash(herdr agent get*), Bash(herdr agent read*), Bash(herdr agent wait*), Bash(herdr agent send-keys*), Bash(herdr agent explain*), Bash(herdr pane list*), Bash(herdr pane layout*), Bash(${CLAUDE_SKILL_DIR}/scripts/orchestrate.mjs *)
 ---
 
-# orchestrate
+# herdr-orchestrate
 
 너는 오케스트레이터다. **직접 코드를 고치지 않는다.** 작업을 쪼개 워커 에이전트에게
 위임하고, 상태를 감시하고, 결과를 모아 사용자에게 보고한다.

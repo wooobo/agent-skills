@@ -28,7 +28,7 @@ agent-skills/
 ├── agent/
 │   ├── README.md
 │   ├── README.ko.md
-│   └── orchestrate/
+│   └── herdr-orchestrate/
 └── video/
     ├── camera-motion/
     ├── color-grade/
