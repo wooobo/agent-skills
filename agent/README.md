@@ -69,12 +69,15 @@ out", "second opinion", "cross-check".
 
 - One worker per working directory. Two workers in one directory corrupt each
   other's files.
-- Concurrency is capped by the number of independent directories and any
-  `max_concurrent` the project sets — not by pane geometry. When a split would
-  fall below a readable size, the worker goes into its own tab instead, which is
-  always full size. Geometry decides placement, not headcount.
-- Workers placed in tabs are invisible on screen. They still have to appear in
-  the final report, or they get forgotten and left running.
+- The caller's pane is never split. Workers live in dedicated tabs, tiled into a
+  grid: 2 side by side, 3 side by side, 4 as 2x2, 5 as 2/2/1, 6 as 3x2. The
+  seventh worker opens another tab, so geometry no longer caps headcount.
+- The grid is carved out in full at the first spawn, which is why `--total` is
+  required. Splitting on demand would resize a worker that may be showing an
+  approval dialog at that exact moment, and a redraw mid-read breaks the only
+  channel we have for supervising it.
+- Worker tabs are invisible on screen. They still have to appear in the final
+  report, or they get forgotten and left running.
 - Result files live inside the worker's own directory. A worker sandboxed to its
   workspace cannot write anywhere else, and its briefing forbids it anyway.
 - Workers never commit. Approval prompts for commit, push, branch creation, new

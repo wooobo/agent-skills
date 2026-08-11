@@ -12,7 +12,7 @@
 // SKILL.md 와 reference/ 가 정한다.
 //
 // usage:
-//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--layout auto|pane|tab] [--extra "<flags>"]
+//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] --total <N> [--extra "<flags>"]
 //   orchestrate.mjs prompt  --run <id> --name <n> --body <file> [--timeout <ms>]
 //   orchestrate.mjs unstick --run <id> --name <n>
 //   orchestrate.mjs status  --run <id>
@@ -21,7 +21,7 @@
 // 공통: --root <path>  manifest 를 둘 곳 (기본 cwd = 오케스트레이터 프로젝트)
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 // ─── kind 테이블 ────────────────────────────────────────────────────────────
@@ -54,6 +54,11 @@ const KINDS = {
 // 판독이 안 되면 blocked 대응이 불가능하므로 스폰을 거부하는 편이 낫다.
 const MIN_COLS = 80
 const MIN_ROWS = 20
+
+// 워커 탭 하나에 담는 슬롯 수. 이보다 많아지면 새 탭을 연다.
+// 6 은 감시 가능한 상한에서 온 숫자다 — 284x79 탭이면 3x2 로 95x40 씩 나온다.
+const TAB_CAPACITY = 6
+const TAB_GRID_COLS = 3
 
 const RESULT_SUBPATH = '.claude/tmp/orchestrator'
 
@@ -176,47 +181,7 @@ function resultPath(worker, runId) {
   return join(worker.cwd, RESULT_SUBPATH, runId, `${worker.name}.md`)
 }
 
-// ─── 기하 ───────────────────────────────────────────────────────────────────
-
-function currentRect() {
-  const paneId = process.env.HERDR_PANE_ID
-  const args = paneId ? ['pane', 'layout', '--pane', paneId] : ['pane', 'layout', '--current']
-  const layout = herdrJson(args).result.layout
-  const self = layout.panes.find((p) => p.pane_id === (paneId ?? layout.focused_pane_id))
-  return self?.rect ?? layout.area
-}
-
-// 분할 후 양쪽이 최소 크기를 지키는 방향을 고른다.
-// 넓은 쪽을 먼저 시도하고, 둘 다 안 되면 스폰을 거부한다 — 좁은 pane 에 워커를
-// 붙이는 것은 감시 불가능한 워커를 만드는 것과 같다.
-function pickDirection(rect, forced) {
-  const canRight = Math.floor(rect.width / 2) >= MIN_COLS
-  const canDown = Math.floor(rect.height / 2) >= MIN_ROWS
-
-  if (forced) {
-    const ok = forced === 'right' ? canRight : canDown
-    if (!ok) {
-      die(
-        `--direction ${forced} 로는 최소 크기를 못 지킨다 ` +
-          `(현재 ${rect.width}x${rect.height}, 하한 ${MIN_COLS}x${MIN_ROWS}).\n` +
-          `먼저 끝난 워커의 pane 을 회수하거나, 사용자에게 창을 키워달라고 요청할 것.`,
-      )
-    }
-    return forced
-  }
-
-  // 터미널 셀은 대략 2:1(세로:가로)이라, 같은 숫자면 열이 행보다 흔하다.
-  // 291x79 를 down 으로 쪼개면 39줄짜리 pane 이 나오는데 TUI 승인 다이얼로그에는
-  // 답답하다. 반으로 나눈 폭이 아직 행 수보다 크면 right 가 낫다.
-  if (canRight && canDown) return rect.width / 2 >= rect.height ? 'right' : 'down'
-  if (canRight) return 'right'
-  if (canDown) return 'down'
-
-  // 더 쪼갤 수 없다. 죽이지 않고 null 을 돌려주면 호출부가 새 탭으로 폴백한다.
-  return null
-}
-
-// ─── 배치: pane 분할 vs 새 탭 ───────────────────────────────────────────────
+// ─── 배치: 워커 전용 탭과 격자 ───────────────────────────────────────────────
 //
 // 오케스트레이터는 **자기 pane 만** 쪼갤 수 있다. 그래서 반복 분할의 결과는 격자가
 // 아니라 계단이고, 계단은 격자 용량에 도달하지 못한다. 284x79 창의 이론상 격자
@@ -229,17 +194,125 @@ function pickDirection(rect, forced) {
 // 그래서 기하가 허용하는 동안은 pane 을 쪼개 나란히 보여주고, 하한에 걸리면
 // 조용히 탭으로 넘어간다.
 
-function createTab(cwd, label) {
+function tabPanes(anyPaneId) {
+  return herdrJson(['pane', 'layout', '--pane', anyPaneId]).result.layout.panes
+}
+
+function rectOf(paneId) {
+  return tabPanes(paneId).find((p) => p.pane_id === paneId)?.rect
+}
+
+// 워커 탭 하나를 만들고 격자를 **미리 다 쪼개 둔다.**
+//
+// 미리 쪼개는 이유: 나중에 슬롯이 필요할 때마다 쪼개면 이미 돌고 있는 워커의 pane 을
+// 쪼개게 된다. 그러면 그 워커가 승인 다이얼로그를 띄운 순간 리사이즈로 화면이 다시
+// 그려질 수 있고, 하필 그때가 우리가 화면을 읽어야 하는 때다. 에이전트가 하나도
+// 없을 때 전부 쪼개 두면 그 위험이 통째로 사라진다.
+//
+// 격자는 균등하게 만든다. "가장 큰 pane 을 반씩" 그리디로 6칸을 만들면 284x79 에서
+// 142x20 이 네 개 나오는데, 하한을 겨우 지키는 크기다. 열을 먼저 ratio 로 나누면
+// 95x40 균일이 나온다. ratio 는 원본이 **유지**하는 비율이다.
+function buildWorkerTab(label, cwd, slotCount) {
   const args = ['tab', 'create', '--cwd', cwd, '--label', label, '--no-focus']
   const ws = process.env.HERDR_WORKSPACE_ID
   if (ws) args.push('--workspace', ws)
   const res = herdrJson(args)
-  const paneId = res?.result?.root_pane?.pane_id
+  const root = res?.result?.root_pane?.pane_id
   const tabId = res?.result?.tab?.tab_id ?? null
-  if (!paneId) {
+  if (!root) {
     die(`tab create 응답에서 root_pane.pane_id 를 못 찾았다:\n${JSON.stringify(res).slice(0, 400)}`)
   }
-  return { paneId, tabId }
+
+  const area = rectOf(root)
+  const plan = fitPlan(area, slotCount)
+
+  const split = (paneId, direction, keep) =>
+    herdrJson([
+      'pane', 'split', paneId,
+      '--direction', direction,
+      '--ratio', String(keep),
+      '--cwd', cwd,
+      '--no-focus',
+    ]).result.pane.pane_id
+
+  // 열 만들기. i 번째 분할 시점에 cur 는 (cols-i) 칸 분량을 갖고 있으므로
+  // 1칸만 남기고 나머지를 새 pane 으로 넘긴다. ratio 는 원본이 유지하는 비율이다.
+  const columns = [root]
+  let cur = root
+  for (let i = 1; i < plan.cols; i++) {
+    cur = split(cur, 'right', 1 / (plan.cols - i + 1))
+    columns.push(cur)
+  }
+
+  // 각 열을 계획된 행 수로 나눈다.
+  const slots = []
+  columns.forEach((col, i) => {
+    const rows = plan.rowsPerCol[i]
+    let p = col
+    slots.push(p)
+    for (let r = 1; r < rows; r++) {
+      p = split(p, 'down', 1 / (rows - r + 1))
+      slots.push(p)
+    }
+  })
+
+  return { tabId, slots, plan }
+}
+
+// 워커 수별 배치. 2~3개는 한 줄에 세로 분할, 4개부터는 열마다 2행씩 채우고
+// 마지막 열이 나머지를 갖는다: 4→2x2, 5→2/2/1, 6→3x2.
+function gridPlan(n) {
+  const cols = n <= 3 ? n : Math.ceil(n / 2)
+  const rowsPerCol = []
+  let left = n
+  for (let i = 0; i < cols; i++) {
+    const take = Math.ceil(left / (cols - i))
+    rowsPerCol.push(take)
+    left -= take
+  }
+  return { cols, rowsPerCol, slots: n }
+}
+
+// 계획대로 나눴을 때 모든 칸이 하한을 지키는지 본다. 창이 작으면 지킬 수 없으므로
+// 이 탭에 넣을 개수를 줄인다. 남는 워커는 호출부가 다음 탭으로 보낸다.
+// 하한을 깨느니 탭을 하나 더 여는 게 낫다 — 판독 불가능한 pane 은 감시 불가능한 워커다.
+function fitPlan(area, want) {
+  for (let n = Math.min(want, TAB_CAPACITY); n >= 1; n--) {
+    const plan = gridPlan(n)
+    const cellW = Math.floor(area.width / plan.cols)
+    const worstRows = Math.max(...plan.rowsPerCol)
+    const cellH = Math.floor(area.height / worstRows)
+    if (cellW >= MIN_COLS && cellH >= MIN_ROWS) return plan
+  }
+  die(
+    `탭 영역(${area.width}x${area.height})이 하한 ${MIN_COLS}x${MIN_ROWS} 짜리 칸 하나도 못 담는다.\n` +
+      `사용자에게 창을 키워달라고 요청할 것.`,
+  )
+}
+
+// 미리 만든 슬롯은 탭 생성 시점의 cwd 를 물려받는다. 워커마다 대상이 다르므로
+// 에이전트를 띄우기 전에 그 pane 을 목적지로 옮기고, **옮겨졌는지 확인한다.**
+// 확인 없이 진행하면 워커가 엉뚱한 저장소에서 작업한다 — 조용히 틀리는 부류다.
+function movePaneTo(paneId, cwd) {
+  if (!waitPaneReady(paneId)) return false
+  herdr(['pane', 'send-text', paneId, `cd ${JSON.stringify(cwd)}`], { allowFail: true })
+  herdr(['pane', 'send-keys', paneId, 'enter'], { allowFail: true })
+
+  const deadline = Date.now() + 8000
+  while (Date.now() < deadline) {
+    sleep(300)
+    const fg = paneForeground(paneId)
+    if (fg && realpath(fg.cwd) === realpath(cwd)) return true
+  }
+  return false
+}
+
+function realpath(p) {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
 }
 
 // ─── 명령: spawn ────────────────────────────────────────────────────────────
@@ -287,46 +360,52 @@ function cmdSpawn(opts) {
   const extraArgs = opts.extra ? opts.extra.trim().split(/\s+/) : []
   const agentArgs = [...(documented ? spec[mode] : []), ...extraArgs]
 
-  const layoutMode = opts.layout ?? 'auto'
-  if (!['auto', 'pane', 'tab'].includes(layoutMode)) die(`--layout 은 auto | pane | tab`)
+  // ── 슬롯 할당 ──
+  //
+  // 호출자(오케스트레이터)의 pane 은 절대 쪼개지 않는다. 워커는 전용 탭에만 들어간다.
+  // 오케스트레이터는 전체 폭을 유지해야 승인 화면을 읽고 결과를 정리할 수 있고,
+  // 자기 pane 을 쪼개면 워커가 늘수록 자기 시야가 좁아지는 이상한 구조가 된다.
+  //
+  // --total 은 이번 run 의 워커 총수다. 첫 스폰 때 그 수만큼 격자를 **미리** 다 쪼갠다.
+  // 필요할 때마다 쪼개면 이미 돌고 있는 워커의 pane 을 쪼개게 되는데, 하필 그 워커가
+  // 승인 다이얼로그를 띄운 순간이면 리사이즈로 화면이 다시 그려져 판독이 깨진다.
+  const total = Math.max(1, parseInt(opts.total ?? '1', 10) || 1)
 
-  let paneId, tabId = null, placement, direction = null
-
-  if (layoutMode === 'tab') {
-    ;({ paneId, tabId } = createTab(cwd, name))
-    placement = 'tab'
-  } else {
-    direction = pickDirection(currentRect(), opts.direction)
-    if (direction) {
-      const split = herdrJson([
-        'pane', 'split', '--current',
-        '--direction', direction,
-        '--cwd', cwd,
-        '--no-focus',
-      ])
-      paneId = split?.result?.pane?.pane_id
-      if (!paneId) die(`pane split 응답에서 pane_id 를 못 찾았다:\n${JSON.stringify(split).slice(0, 400)}`)
-      placement = 'pane'
-    } else if (layoutMode === 'auto') {
-      ;({ paneId, tabId } = createTab(cwd, name))
-      placement = 'tab'
-    } else {
-      const r = currentRect()
-      die(
-        `--layout pane 인데 현재 pane(${r.width}x${r.height})을 더 쪼갤 수 없다 ` +
-          `(하한 ${MIN_COLS}x${MIN_ROWS}).\n` +
-          `--layout auto 를 쓰면 새 탭으로 넘어간다. 아니면 끝난 워커의 pane 을 회수할 것.`,
-      )
-    }
+  m.tabs ??= []
+  const takenPanes = new Set(m.workers.map((w) => w.pane_id))
+  let slot = null
+  for (const t of m.tabs) {
+    const free = t.slots.find((p) => !takenPanes.has(p))
+    if (free) { slot = { paneId: free, tabId: t.tab_id }; break }
   }
 
-  if (!waitPaneReady(paneId)) {
-    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'pane_not_ready' })
+  if (!slot) {
+    const placed = m.workers.length
+    const want = Math.max(1, Math.min(total - placed, TAB_CAPACITY))
+    const label = `workers-${runId}${m.tabs.length ? `-${m.tabs.length + 1}` : ''}`
+    const built = buildWorkerTab(label, cwd, want)
+    m.tabs.push({ tab_id: built.tabId, slots: built.slots, plan: built.plan })
+    saveManifest(root, runId, m)
+    slot = { paneId: built.slots[0], tabId: built.tabId }
+    console.log(
+      `tab      ${built.tabId}  ${built.plan.cols}열 [${built.plan.rowsPerCol.join('/')}] ` +
+        `= 슬롯 ${built.slots.length}개`,
+    )
+  }
+
+  const paneId = slot.paneId
+  const tabId = slot.tabId
+  const placement = 'tab'
+
+  // 미리 만든 슬롯은 탭 생성 시점의 cwd 를 갖고 있다. 이 워커의 대상으로 옮기고
+  // 옮겨졌는지 확인한다 — 확인 없이 띄우면 워커가 엉뚱한 저장소에서 작업한다.
+  if (!movePaneTo(paneId, cwd)) {
+    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'cd_failed' })
     saveManifest(root, runId, m)
     die(
-      `pane ${paneId} 가 셸 프롬프트에 도달하지 않는다.\n` +
-        `pane 은 살아 있다. herdr pane read ${paneId} --source visible 로 확인하고,\n` +
-        `사용자에게 보고한 뒤 정리 여부를 물을 것.`,
+      `슬롯 ${paneId} 를 ${cwd} 로 옮기지 못했다.\n` +
+        `그대로 띄우면 워커가 엉뚱한 디렉토리에서 작업한다. 멈추고 보고할 것.\n` +
+        `확인: herdr pane read ${paneId} --source visible`,
     )
   }
 
@@ -377,16 +456,9 @@ function cmdSpawn(opts) {
   m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'spawned' })
   saveManifest(root, runId, m)
 
-  const where = placement === 'tab' ? `tab=${tabId} pane=${paneId}` : `pane=${paneId} dir=${direction}`
-  console.log(`spawned  ${name}  kind=${kind} mode=${mode} ${where}`)
+  console.log(`spawned  ${name}  kind=${kind} mode=${mode} tab=${tabId} pane=${paneId}`)
   console.log(`  cwd    ${cwd}`)
   console.log(`  result ${join(cwd, RESULT_SUBPATH, runId, `${name}.md`)}`)
-  if (placement === 'tab' && layoutMode === 'auto') {
-    console.log(
-      `  현재 pane 을 더 쪼개면 하한(${MIN_COLS}x${MIN_ROWS})을 밑돌아 새 탭에 띄웠다.\n` +
-        `    이 워커는 화면에 안 보인다. 감시는 status / agent read 로 한다.`,
-    )
-  }
   if (gatesCleared > 0) console.log(`  첫 실행 안내 게이트 ${gatesCleared}개를 닫았다`)
   if (tooSmall) {
     console.log(
@@ -630,14 +702,16 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage:
-  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--layout auto|pane|tab] [--extra "<flags>"]
+  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] --total <N> [--extra "<flags>"]
   orchestrate.mjs prompt  --run <id> --name <n> --body <briefing-file> [--timeout <ms>]
   orchestrate.mjs unstick --run <id> --name <n>
   orchestrate.mjs status  --run <id>
   orchestrate.mjs collect --run <id>
 
 공통: --root <path>   manifest 위치 (기본: 현재 디렉토리)
---layout 기본값은 auto: pane 을 쪼개다가 하한(80x20)에 걸리면 새 탭으로 넘어간다.
+--total 은 이번 run 의 워커 총수. 첫 스폰 때 그 수만큼 격자를 미리 만든다
+(2→세로2, 3→세로3, 4→2x2, 5→2/2/1, 6→3x2). 6 을 넘으면 새 탭을 연다.
+호출자 pane 은 쪼개지 않는다 — 워커는 전용 탭에만 들어간다.
 --extra 는 kind 기본 플래그 뒤에 덧붙는다 (예: --extra "-m gpt-5.6-luna").
 샌드박스·승인 플래그를 여기서 덮어쓰지 마라. blocked 감시가 깨진다.
 문서화된 kind: ${Object.keys(KINDS).join(', ')}`
