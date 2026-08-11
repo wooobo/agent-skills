@@ -36,6 +36,9 @@ const KINDS = {
     'read-only': ['-s', 'read-only', '-a', 'untrusted'],
     unstick: ['q'], // transcript 뷰어 탈출
     unstickNote: 'transcript 뷰어(↑/↓ to scroll, q to quit)에서 q 로 빠져나온다',
+    // 첫 실행/업데이트 안내 게이트. 이걸 안 닫고 브리핑을 보내면 게이트가 텍스트를
+    // 통째로 삼키고 Enter 로 닫힌다 — herdr 상태는 working→done 으로 정상처럼 보인다.
+    gates: [/press enter to continue/i],
   },
   claude: {
     // claude 워커는 cwd 의 CLAUDE.md / .claude/skills 를 스스로 읽는다. 플래그 불필요.
@@ -43,6 +46,7 @@ const KINDS = {
     'read-only': [],
     unstick: ['ctrl+o'], // showing detailed transcript 토글 (미검증)
     unstickNote: 'showing detailed transcript 를 ctrl+o 로 토글한다 (미검증 — 실패 시 esc)',
+    gates: [/press enter to continue/i, /do you trust the files in this folder/i],
   },
 }
 
@@ -72,6 +76,70 @@ function herdrJson(args, opts) {
   } catch {
     die(`herdr ${args.join(' ')} 출력이 JSON 이 아니다:\n${raw.slice(0, 400)}`)
   }
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+// ─── pane 준비 대기 ─────────────────────────────────────────────────────────
+//
+// pane split 직후 herdr 는 pane 을 즉시 돌려주지만 셸은 아직 뜨지 않았거나
+// 프롬프트를 다 그리지 않았다. 이 상태에서 agent start 를 부르면 두 가지로 깨진다:
+//   - agent_pane_busy: 셸 프로세스 자체가 아직 없다
+//   - 선두 문자 유실: 프롬프트가 리드로되는 중에 명령이 타이핑돼서
+//     `codex ...` 가 `odex ...` 가 되고, "command not found" 뒤 startup 타임아웃
+// 후자가 더 나쁘다 — 성공한 것처럼 보이는 경로로 들어갔다가 30초를 버린다.
+// 그래서 셸 프로세스 + 화면 출력 두 가지가 다 관측될 때까지 기다린 뒤 잠깐 더 쉰다.
+
+const SHELLS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'nu', 'pwsh'])
+
+function paneForeground(paneId) {
+  const info = herdrJson(['pane', 'process-info', '--pane', paneId], { allowFail: true })
+  return info?.result?.process_info?.foreground_processes?.[0] ?? null
+}
+
+function paneIsShell(paneId) {
+  const fg = paneForeground(paneId)
+  return Boolean(fg && SHELLS.has(fg.name))
+}
+
+function paneVisible(paneId) {
+  return herdr(['pane', 'read', paneId, '--source', 'visible'], { allowFail: true }).trim()
+}
+
+function waitPaneReady(paneId, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (paneIsShell(paneId) && paneVisible(paneId).length > 0) {
+      sleep(500) // 프롬프트 리드로가 끝나도록 한 박자 쉰다
+      return true
+    }
+    sleep(250)
+  }
+  return false
+}
+
+// ─── 첫 실행 게이트 닫기 ────────────────────────────────────────────────────
+//
+// 실측에서 나온 것. codex 를 새로 띄우면 `Press enter to continue` 안내 화면이
+// 떠 있을 수 있다. 이 상태에서 브리핑을 제출하면 게이트가 텍스트를 통째로 삼키고
+// 끝의 Enter 로 닫힌다. 워커는 빈 composer 로 돌아가고 아무 일도 하지 않는데,
+// herdr 상태는 working → done 으로 흘러서 **정상 완료처럼 보인다.**
+// 결과 파일이 없다는 것 말고는 탐지할 방법이 없었다. 그래서 스폰 직후에 닫는다.
+
+function clearGates(name, paneId, spec, rounds = 4) {
+  const gates = spec?.gates ?? []
+  if (gates.length === 0) return 0
+  let cleared = 0
+  for (let i = 0; i < rounds; i++) {
+    const screen = paneVisible(paneId)
+    if (!gates.some((re) => re.test(screen))) break
+    herdr(['agent', 'send-keys', name, 'enter'], { allowFail: true })
+    cleared++
+    sleep(700)
+  }
+  return cleared
 }
 
 // ─── manifest ───────────────────────────────────────────────────────────────
@@ -137,7 +205,10 @@ function pickDirection(rect, forced) {
     return forced
   }
 
-  if (canRight && canDown) return rect.width / 2 >= rect.height * 2 ? 'right' : 'down'
+  // 터미널 셀은 대략 2:1(세로:가로)이라, 같은 숫자면 열이 행보다 흔하다.
+  // 291x79 를 down 으로 쪼개면 39줄짜리 pane 이 나오는데 TUI 승인 다이얼로그에는
+  // 답답하다. 반으로 나눈 폭이 아직 행 수보다 크면 right 가 낫다.
+  if (canRight && canDown) return rect.width / 2 >= rect.height ? 'right' : 'down'
   if (canRight) return 'right'
   if (canDown) return 'down'
 
@@ -200,22 +271,58 @@ function cmdSpawn(opts) {
   const paneId = split?.result?.pane?.pane_id
   if (!paneId) die(`pane split 응답에서 pane_id 를 못 찾았다:\n${JSON.stringify(split).slice(0, 400)}`)
 
-  // 스폰 실패는 재시도하지 않는다. manifest 에 pane 을 남겨서 사용자가 정리할 수 있게 한다.
-  const startArgs = ['agent', 'start', name, '--kind', kind, '--pane', paneId]
-  if (agentArgs.length) startArgs.push('--', ...agentArgs)
-  try {
-    execFileSync('herdr', startArgs, { encoding: 'utf8' })
-  } catch (err) {
-    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'start_failed' })
+  if (!waitPaneReady(paneId)) {
+    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'pane_not_ready' })
     saveManifest(root, runId, m)
     die(
-      `agent start 실패 (pane ${paneId} 는 살아 있다):\n` +
-        `${(err.stderr || err.stdout || err.message).trim()}\n` +
-        `재시도하지 말 것. 사용자에게 보고하고 pane 정리 여부를 물을 것.`,
+      `pane ${paneId} 가 셸 프롬프트에 도달하지 않는다.\n` +
+        `pane 은 살아 있다. herdr pane read ${paneId} --source visible 로 확인하고,\n` +
+        `사용자에게 보고한 뒤 정리 여부를 물을 것.`,
     )
   }
 
+  const startArgs = ['agent', 'start', name, '--kind', kind, '--pane', paneId]
+  if (agentArgs.length) startArgs.push('--', ...agentArgs)
+
+  // 재시도는 딱 한 번, 그것도 "명령이 셸에 안 먹은 경우"에만 한다.
+  // 포그라운드가 아직 셸이면 타이핑이 유실된 것이므로 줄을 비우고 다시 친다.
+  // 포그라운드가 셸이 아니면 에이전트는 이미 떠 있고 herdr 가 감지를 못 한 것이라,
+  // 다시 치면 돌고 있는 에이전트에 쓰레기 입력이 들어간다. 그때는 멈추고 보고한다.
+  let lastErr = null
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      execFileSync('herdr', startArgs, { encoding: 'utf8' })
+      lastErr = null
+      break
+    } catch (err) {
+      lastErr = (err.stderr || err.stdout || err.message).trim()
+      if (attempt === 2) break
+      if (!paneIsShell(paneId)) break
+      herdr(['pane', 'send-keys', paneId, 'ctrl+c'], { allowFail: true })
+      herdr(['pane', 'send-keys', paneId, 'ctrl+u'], { allowFail: true })
+      waitPaneReady(paneId, 8000)
+    }
+  }
+
+  if (lastErr) {
+    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'start_failed' })
+    saveManifest(root, runId, m)
+    die(
+      `agent start 실패 (pane ${paneId} 는 살아 있다):\n${lastErr}\n` +
+        `준비 대기 후 1회 재시도까지 했다. 더 재시도하지 말 것.\n` +
+        `herdr pane read ${paneId} --source visible 로 화면을 확인하고 사용자에게 보고할 것.`,
+    )
+  }
+
+  const gatesCleared = clearGates(name, paneId, spec)
+
   mkdirSync(join(cwd, RESULT_SUBPATH, runId), { recursive: true })
+
+  // 분할 시점의 기하 검사는 스냅샷이다. 사용자가 그 사이에 창을 줄이면 하한을 밑도는
+  // pane 이 나올 수 있다. 되돌릴 수는 없으니 실측치를 알려서 판단을 넘긴다.
+  const after = herdrJson(['pane', 'layout', '--pane', paneId], { allowFail: true })
+  const got = after?.result?.layout?.panes?.find((p) => p.pane_id === paneId)?.rect
+  const tooSmall = got && (got.width < MIN_COLS || got.height < MIN_ROWS)
 
   m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'spawned' })
   saveManifest(root, runId, m)
@@ -223,6 +330,14 @@ function cmdSpawn(opts) {
   console.log(`spawned  ${name}  kind=${kind} mode=${mode} pane=${paneId} dir=${direction}`)
   console.log(`  cwd    ${cwd}`)
   console.log(`  result ${join(cwd, RESULT_SUBPATH, runId, `${name}.md`)}`)
+  if (gatesCleared > 0) console.log(`  첫 실행 안내 게이트 ${gatesCleared}개를 닫았다`)
+  if (tooSmall) {
+    console.log(
+      `  ⚠ 분할 결과가 ${got.width}x${got.height} 로 하한(${MIN_COLS}x${MIN_ROWS})을 밑돈다.\n` +
+        `    분할 전 검사는 통과했으니 그 사이 창이 줄어든 것이다. 승인 UI 판독이\n` +
+        `    어려울 수 있다. 사용자에게 창을 키워달라고 요청할지 물을 것.`,
+    )
+  }
   if (!documented) {
     console.log(
       `  ⚠ '${kind}' 는 reference/kinds/ 에 문서가 없다. 플래그 없이 스폰했다.\n` +
@@ -278,11 +393,37 @@ function cmdPrompt(opts) {
 
   console.log(`briefed  ${name}  ${text.length} bytes`)
   const trimmed = out.trim()
-  if (trimmed) console.log(trimmed)
   if (/agent_prompt_stalled/.test(trimmed)) {
     console.log(
       `  ⚠ agent_prompt_stalled — 재전송하지 말 것. 프롬프트가 두 번 들어갈 수 있다.\n` +
         `    herdr agent read ${name} --source recent-unwrapped --lines 80 으로 화면을 확인할 것.`,
+    )
+    return
+  }
+
+  // 제출이 "성공"해도 텍스트가 워커에게 안 갔을 수 있다 — 안내 게이트가 삼키면
+  // herdr 상태는 working → done 으로 정상처럼 흐르고, 워커는 아무 일도 하지 않는다.
+  // 실측에서 실제로 겪었고, 결과 파일이 없다는 것 말고는 탐지가 안 됐다.
+  // run_id 는 계약에 박혀 있으니 화면에 그게 보이면 텍스트가 도달한 것이다.
+  let landed = false
+  for (let i = 0; i < 6; i++) {
+    sleep(1000)
+    if (herdr(['agent', 'read', name, '--source', 'recent-unwrapped', '--lines', '200'], {
+      allowFail: true,
+    }).includes(runId)) {
+      landed = true
+      break
+    }
+  }
+
+  if (landed) {
+    console.log(`  제출 확인됨 (화면에서 run_id 관측)`)
+  } else {
+    console.log(
+      `  ⚠ 브리핑이 워커 화면에 나타나지 않는다. 안내 게이트가 삼켰을 수 있다.\n` +
+        `    herdr agent read ${name} --source visible --lines 20 으로 확인할 것.\n` +
+        `    빈 composer 라면 게이트를 닫고(enter) 이 명령을 한 번 더 실행해도 된다 —\n` +
+        `    텍스트가 도달하지 않았으므로 중복 실행이 아니다.`,
     )
   }
 }
