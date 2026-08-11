@@ -81,15 +81,33 @@ agent/
 └── orchestrate/
     ├── SKILL.md                  정책과 0~5단계 흐름
     ├── scripts/
-    │   └── collect.sh            여러 저장소에 흩어진 결과 파일 수합
+    │   └── orchestrate.mjs       spawn / prompt / unstick / status / collect
     └── reference/
         ├── briefing.md           맥락 없는 워커에게 무엇을 말할지
         ├── gotchas.md            누적 실패 기록 (유일하게 쓰기가 일어나는 파일)
         └── kinds/
-            ├── codex.md          codex 스폰 플래그, 승인 키, 함정
+            ├── codex.md          codex 승인 판단과 함정
             └── claude.md         claude 워커 조작, alternate screen 문제
 ```
 
 `SKILL.md`만 항상 컨텍스트에 올라갑니다. `reference/` 아래는 필요할 때만 읽습니다 —
-`briefing.md`는 프롬프트를 조립할 때, `kinds/<kind>.md`는 그 벤더를 스폰하기 전과
-blocked 됐을 때, `gotchas.md`는 매 실행 시작 시점에.
+`briefing.md`는 프롬프트를 조립할 때, `kinds/<kind>.md`는 워커가 blocked 되거나
+이상하게 굴 때, `gotchas.md`는 매 실행 시작 시점에.
+
+## 무엇이 코드고 무엇이 산문인가
+
+분할선은 파일 단위가 아니라 작업 한가운데를 지나갑니다:
+
+| 관심사 | 소유자 | 이유 |
+| --- | --- | --- |
+| 벤더별 스폰 플래그 | `orchestrate.mjs` | 순수 데이터. "이 플래그 빼먹지 마라"는 경고가 필요한 문서는 애초에 함수였어야 합니다. |
+| pane 분할 방향과 크기 하한 | `orchestrate.mjs` | 산술 계산 + 80x20 미만이면 거부. 판독 불가능한 pane은 감시 불가능한 워커를 만듭니다. |
+| 결과 경로와 회수 계약 | `orchestrate.mjs` | 매번 같은 규칙으로 계산되는데, 손으로 조립했을 때 실제로 틀렸습니다. |
+| 워커→cwd→pane 매핑 | `orchestrate.mjs` (manifest) | 상태는 모델 컨텍스트보다 오래 살아야 합니다. 20분 대기가 이걸 잃게 만들면 안 됩니다. |
+| 워커의 요청을 승인할지 | `SKILL.md` + `kinds/` | 임의의 명령 문자열에 대한 의미 판단. 스크립트는 UI가 어떤 키를 원하는지는 알아도, 그 명령을 실행해도 되는지는 모릅니다. |
+| 워커가 알아야 할 것 | `briefing.md` | 안목이 필요한 압축. "모르면 틀리는 것만"이라는 기준은 함수 시그니처로 표현되지 않습니다. |
+
+스크립트는 절벽에서 떨어집니다 — 패턴이 안 맞으면 호출자에게 정책이 하나도 남지
+않습니다. 산문은 완만하게 나빠집니다 — 표에 없는 화면 문구를 만나도 원칙이 남아 있고
+사용자에게 넘길 통로가 있습니다. 그래서 **벤더가 새 TUI를 내면 바뀌는 것은 산문으로,
+매번 똑같은 것은 코드로** 갑니다.

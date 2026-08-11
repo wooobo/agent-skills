@@ -1,25 +1,26 @@
 # 워커 kind: claude (Claude Code)
 
-근거: `herdr` claude 감지 매니페스트(`src/detect/manifests/claude.toml`).
+근거: herdr claude 감지 매니페스트(`src/detect/manifests/claude.toml`).
 실제 관측으로 검증되지 않은 항목은 "미검증"으로 표시했다.
+
+스폰 플래그와 뷰어 탈출 키는 `scripts/orchestrate.mjs`의 `KINDS.claude`가 소유한다.
+이 문서는 판단이 필요한 것만 다룬다.
+
+## 언제 claude 워커가 정당한가
 
 오케스트레이터 자신이 Claude Code일 때, 워커로 또 claude를 쓰는 것은 대체로 낭비다.
 같은 저장소 안의 조사·리뷰라면 herdr 워커 대신 **내장 subagent**가 더 싸고 빠르다.
-claude 워커가 정당한 경우는 셋뿐이다:
+정당한 경우는 셋뿐이다:
 
 - 수십 분 이상 걸리는 장시간 작업을 백그라운드로 돌릴 때
 - 사용자가 중간에 눈으로 보고 직접 개입해야 할 때
 - 다른 저장소에서 독립적으로 오래 돌아야 할 때
 
-## 스폰
+## 브리핑이 codex보다 짧아도 되는 이유
 
-```bash
-herdr agent start <이름> --kind claude --pane <pane_id>
-```
-
-워커 claude는 `--cwd`로 지정된 디렉토리의 `CLAUDE.md`와 `.claude/skills/`를 **스스로 읽는다.**
-codex와 달리 프로젝트 지침을 인라인으로 다 넣을 필요가 없다. 브리핑에서는 작업 내용과
-범위 제한, 결과 회수 계약에 집중한다.
+워커 claude는 `--cwd`로 지정된 디렉토리의 `CLAUDE.md`와 `.claude/skills/`를 **스스로
+읽는다.** 프로젝트 지침을 인라인으로 다 넣을 필요가 없으니, 브리핑은 작업 내용과
+범위 제한에 집중한다.
 
 단, 대상이 독립 git root이고 그 안에 `CLAUDE.md`가 없으면 상위 저장소의 것을 못 읽는다.
 그 경우는 codex와 동일하게 취급해 지침을 인라인으로 넣는다.
@@ -52,8 +53,8 @@ herdr agent read <이름> --source recent-unwrapped --lines 80
 **transcript 뷰어 (`unknown` + 상태 갱신 정지)**
 
 `showing detailed transcript` 가 보이면 뷰어 모드다. 매니페스트가 `skip_state_update = true`라
-herdr가 상태 갱신을 멈추고 `agent wait`가 안 풀린다. `send-keys <이름> ctrl+o` 로 토글해
-빠져나온다. (미검증 — 안 되면 `esc` 후 화면 재확인)
+herdr가 상태 갱신을 멈추고 `agent wait`가 안 풀린다.
+대응: `orchestrate.mjs unstick` (내부적으로 `ctrl+o` 토글, 미검증 — 안 되면 `esc` 후 화면 재확인).
 
 **alternate screen — 결과 읽기 실패**
 

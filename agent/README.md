@@ -89,16 +89,34 @@ agent/
 └── orchestrate/
     ├── SKILL.md                  policy and the 0-5 flow
     ├── scripts/
-    │   └── collect.sh            gather result files across repositories
+    │   └── orchestrate.mjs       spawn / prompt / unstick / status / collect
     └── reference/
         ├── briefing.md           what to tell a context-free worker
         ├── gotchas.md            accumulated failures (the only file written back)
         └── kinds/
-            ├── codex.md          codex spawn flags, approval keys, traps
+            ├── codex.md          codex approval judgement and traps
             └── claude.md         claude worker handling, alternate-screen problem
 ```
 
 `SKILL.md` is the only file always in context. Everything under `reference/` is
-read on demand: `briefing.md` when assembling a prompt, `kinds/<kind>.md` before
-spawning that vendor and again when it blocks, `gotchas.md` at the start of every
-run.
+read on demand: `briefing.md` when assembling a prompt, `kinds/<kind>.md` when a
+worker blocks or behaves strangely, `gotchas.md` at the start of every run.
+
+## What Is Code And What Is Prose
+
+The split is not file-by-file. It runs through the middle of the work:
+
+| Concern | Owner | Why |
+| --- | --- | --- |
+| Spawn flags per vendor | `orchestrate.mjs` | Pure data. A doc that needs a "don't forget this flag" warning should have been a function. |
+| Pane split direction and size floor | `orchestrate.mjs` | Arithmetic with a hard refusal below 80x20, because an unreadable pane makes its worker impossible to supervise. |
+| Result path and retrieval contract | `orchestrate.mjs` | Computed the same way every time, and got it wrong when assembled by hand. |
+| Worker to cwd to pane mapping | `orchestrate.mjs` (manifest) | State outlives the model's context. Twenty minutes of waiting should not be able to lose it. |
+| Whether to approve what a worker asks | `SKILL.md` + `kinds/` | Semantic judgement over an arbitrary command string. A script can tell which key the UI wants; it cannot tell whether the command should run. |
+| What a worker needs to know | `briefing.md` | Compression with taste. The rule is "only what it will get wrong without knowing", which is not expressible as a function signature. |
+
+Scripts fail at a cliff: an unmatched pattern leaves the caller with no policy at
+all. Prose degrades gently: an unlisted screen string still has a stated
+principle and an escape hatch to the user. So anything that changes when a vendor
+ships a new TUI stays prose, and anything that is the same every single time
+becomes code.

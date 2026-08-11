@@ -1,44 +1,37 @@
 # 워커 kind: codex
 
-근거: `herdr` codex 감지 매니페스트(`src/detect/manifests/codex.toml`, version 2026.07.18.1),
+근거: herdr codex 감지 매니페스트(`src/detect/manifests/codex.toml`, version 2026.07.18.1),
 `codex --help`. 실제 관측으로 검증되지 않은 항목은 "미검증"으로 표시했다.
 
-## 스폰
+스폰 플래그와 뷰어 탈출 키는 `scripts/orchestrate.mjs`의 `KINDS.codex`가 소유한다.
+이 문서는 **판단이 필요한 것**만 다룬다: 무엇을 승인할지, 화면이 이상할 때 무슨 일이
+벌어진 건지.
 
-```bash
-herdr agent start <이름> --kind codex --pane <pane_id> -- -s workspace-write -a on-request
-```
+## 왜 그 플래그인가
 
-`--` 뒤는 codex에 그대로 전달된다. 작업 디렉토리는 `pane split --cwd`로 이미 정해지므로
-`-C/--cd`를 쓰지 않는다.
+`spawn`이 `-s workspace-write -a on-request`로 띄운다. 사용자가 바꿔달라고 하면
+이 트레이드오프를 먼저 설명한다.
 
-### 승인 정책 (`-a, --ask-for-approval`)
-
-| 값 | 동작 | 오케스트레이션에서 |
+| 승인 정책 | 동작 | 오케스트레이션에서 |
 |---|---|---|
-| `untrusted` | 신뢰 목록(ls, cat 등) 외에는 전부 승인 요청 | 조사·리뷰 등 읽기 위주 작업에 |
-| `on-request` | 모델이 필요할 때만 승인 요청 | **기본값으로 쓴다** |
-| `never` | 승인을 묻지 않음. 실행 실패는 모델에 반환 | 쓰지 마라. `blocked` 신호가 사라져서 herdr로 감시하는 의미가 없어진다 |
+| `untrusted` | 신뢰 목록(ls, cat 등) 외 전부 승인 요청 | `--mode read-only`가 이걸 쓴다 |
+| `on-request` | 모델이 필요할 때만 승인 요청 | 기본값 |
+| `never` | 승인을 묻지 않고 실패를 모델에 반환 | **쓰면 안 된다.** `blocked` 신호가 사라져서 herdr로 감시하는 의미 자체가 없어진다 |
 
-### 샌드박스 (`-s, --sandbox`)
-
-| 값 | 오케스트레이션에서 |
+| 샌드박스 | 오케스트레이션에서 |
 |---|---|
-| `read-only` | 조사·분석만 위임할 때 |
-| `workspace-write` | **구현 작업 기본값.** 작업 디렉토리 안에서만 쓰기 |
-| `danger-full-access` | 쓰지 마라 |
+| `read-only` | 조사·분석 전용 |
+| `workspace-write` | 구현 기본값. 작업 디렉토리 안에서만 쓰기 |
+| `danger-full-access` | 쓰지 않는다 |
 
-`--dangerously-bypass-approvals-and-sandbox`는 어떤 경우에도 쓰지 마라.
+`--dangerously-bypass-approvals-and-sandbox`는 어떤 경우에도 쓰지 않는다.
 
-`workspace-write`는 작업 디렉토리 안이면 `git commit`도 막지 않는다. 커밋 금지는
-샌드박스가 아니라 **브리핑 문구와 blocked 시 거부로 강제한다.**
+두 가지가 여기서 따라 나온다:
 
-`workspace-write`는 cwd 밖 쓰기를 막는다. 그래서 **결과 회수 파일은 반드시 워커 cwd 안**
-(`<cwd>/.claude/tmp/orchestrator/<run_id>/<이름>.md`)이어야 한다. 오케스트레이터 쪽
-디렉토리로 쓰게 하면 샌드박스에 막혀 계약이 이행되지 않는다.
-
-기타: `-m <model>` 모델 지정, `--add-dir <DIR>` 추가 쓰기 경로. 결과 경로를 cwd 안에
-두면 `--add-dir`이 필요할 일이 없다. 범위가 넓어지므로 기본 사용 안 함.
+- `workspace-write`는 cwd 밖 쓰기를 막는다. 그래서 **결과 회수 파일은 반드시 워커 cwd
+  안**이다. 스크립트가 그 경로를 계산해 계약에 박아 넣으므로 손으로 바꾸지 마라
+- `workspace-write`는 작업 디렉토리 안이면 `git commit`도 막지 않는다.
+  **커밋 금지는 샌드박스가 아니라 브리핑 문구와 blocked 시 거부로 강제한다**
 
 ## 상태 판정
 
@@ -54,8 +47,8 @@ herdr가 codex를 이렇게 읽는다:
 ## blocked 대응
 
 **원칙: codex의 blocker 문구는 필요한 키를 스스로 말한다.** 화면을 읽고 그 문구를 따른다.
-아래 표는 매니페스트가 인식하는 알려진 패턴이며, 여기 없는 문구가 나오면 화면 지시를 따르되
-판단이 안 서면 사용자에게 넘긴다.
+아래 표는 매니페스트가 인식하는 알려진 패턴이며, 여기 없는 문구가 나오면 화면 지시를
+따르되 판단이 안 서면 사용자에게 넘긴다.
 
 ```bash
 herdr agent read <이름> --source recent-unwrapped --lines 80
@@ -65,7 +58,7 @@ herdr agent read <이름> --source recent-unwrapped --lines 80
 |---|---|---|
 | `press enter to confirm or esc to cancel` | 승인 `enter` / 거부 `esc` | |
 | `allow command?` | 실행하려는 명령을 **먼저 읽는다** | 범위 밖 경로·git commit·push면 `esc` |
-| `enter to submit answer` | 답을 `agent prompt`로 보낸다 | 질문 내용 판단 필요 |
+| `enter to submit answer` | 답을 `prompt`로 보낸다 | 질문 내용 판단 필요 |
 | `enter to submit all` | `enter` | 미검증 |
 | `[y/n]` | `y` 또는 `n` | |
 | `do you want to ...` + `❯` | 화살표로 선택 후 `enter` | `send-keys <이름> down`, `up`, `enter` |
@@ -84,7 +77,7 @@ herdr agent read <이름> --source recent-unwrapped --lines 80
 들어간 것이다. 이때 매니페스트는 `skip_state_update = true`라 **herdr가 상태 갱신을 멈춘다.**
 `agent wait`가 영원히 안 풀린다.
 
-대응: `herdr agent send-keys <이름> q` 로 빠져나온 뒤 상태를 다시 본다.
+대응: `orchestrate.mjs unstick` (내부적으로 `q`를 보낸다).
 
 **`unknown`을 완료로 읽지 않기**
 
