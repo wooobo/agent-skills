@@ -12,7 +12,7 @@
 // SKILL.md 와 reference/ 가 정한다.
 //
 // usage:
-//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down]
+//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--extra "<flags>"]
 //   orchestrate.mjs prompt  --run <id> --name <n> --body <file> [--timeout <ms>]
 //   orchestrate.mjs unstick --run <id> --name <n>
 //   orchestrate.mjs status  --run <id>
@@ -258,7 +258,11 @@ function cmdSpawn(opts) {
 
   const spec = KINDS[kind]
   const documented = Boolean(spec)
-  const agentArgs = documented ? spec[mode] : []
+  // --extra 는 KINDS 의 검증된 플래그 뒤에 덧붙는다. 모델/추론 강도처럼 kind 별
+  // 기본값이 아니라 이번 run 에서만 바꾸고 싶은 것에 쓴다. 샌드박스/승인 플래그를
+  // 여기서 덮어쓰면 blocked 감시가 깨지므로 그런 용도로는 쓰지 마라.
+  const extraArgs = opts.extra ? opts.extra.trim().split(/\s+/) : []
+  const agentArgs = [...(documented ? spec[mode] : []), ...extraArgs]
 
   const direction = pickDirection(currentRect(), opts.direction)
 
@@ -564,13 +568,15 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage:
-  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down]
+  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--extra "<flags>"]
   orchestrate.mjs prompt  --run <id> --name <n> --body <briefing-file> [--timeout <ms>]
   orchestrate.mjs unstick --run <id> --name <n>
   orchestrate.mjs status  --run <id>
   orchestrate.mjs collect --run <id>
 
 공통: --root <path>   manifest 위치 (기본: 현재 디렉토리)
+--extra 는 kind 기본 플래그 뒤에 덧붙는다 (예: --extra "-m gpt-5.6-luna").
+샌드박스·승인 플래그를 여기서 덮어쓰지 마라. blocked 감시가 깨진다.
 문서화된 kind: ${Object.keys(KINDS).join(', ')}`
 
 const [cmd, ...rest] = process.argv.slice(2)
