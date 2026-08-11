@@ -8,6 +8,8 @@
 ## 스킬셋
 
 - [디자인 파이프라인 스킬](design/README.ko.md) ([English](design/README.md))
+- [에이전트 인프라 스킬](agent/README.ko.md) ([English](agent/README.md))
+- 영상 프롬프트 라이브러리 스킬 — `video/`
 
 ## 저장소 구조
 
@@ -15,14 +17,26 @@
 agent-skills/
 ├── README.md
 ├── README.ko.md
-└── design/
-    ├── README.md
-    ├── README.ko.md
-    ├── product-concept/
-    ├── ux-designer/
-    ├── react-frontend-prototyper/
-    ├── html-frontend-prototyper/
-    └── design-reviewer/
+├── design/
+│   ├── README.md
+│   ├── README.ko.md
+│   ├── product-concept/
+│   ├── ux-designer/
+│   ├── react-frontend-prototyper/
+│   ├── html-frontend-prototyper/
+│   └── design-reviewer/
+├── agent/
+│   ├── README.md
+│   ├── README.ko.md
+│   └── orchestrate/
+└── video/
+    ├── camera-motion/
+    ├── color-grade/
+    ├── composition/
+    ├── product-shot/
+    ├── product-swap/
+    ├── scene-transition/
+    └── vfx/
 ```
 
 각 스킬 폴더에는 작업 흐름, 제약, 협업 조건, 품질 기준을 담은
