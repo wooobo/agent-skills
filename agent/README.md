@@ -69,9 +69,12 @@ out", "second opinion", "cross-check".
 
 - One worker per working directory. Two workers in one directory corrupt each
   other's files.
-- Concurrency is not a fixed number. It is the minimum of available independent
-  directories, how many panes still fit above a readable width, and any
-  `max_concurrent` the project sets.
+- Concurrency is capped by the number of independent directories and any
+  `max_concurrent` the project sets — not by pane geometry. When a split would
+  fall below a readable size, the worker goes into its own tab instead, which is
+  always full size. Geometry decides placement, not headcount.
+- Workers placed in tabs are invisible on screen. They still have to appear in
+  the final report, or they get forgotten and left running.
 - Result files live inside the worker's own directory. A worker sandboxed to its
   workspace cannot write anywhere else, and its briefing forbids it anyway.
 - Workers never commit. Approval prompts for commit, push, branch creation, new

@@ -12,7 +12,7 @@
 // SKILL.md 와 reference/ 가 정한다.
 //
 // usage:
-//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--extra "<flags>"]
+//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--layout auto|pane|tab] [--extra "<flags>"]
 //   orchestrate.mjs prompt  --run <id> --name <n> --body <file> [--timeout <ms>]
 //   orchestrate.mjs unstick --run <id> --name <n>
 //   orchestrate.mjs status  --run <id>
@@ -212,11 +212,34 @@ function pickDirection(rect, forced) {
   if (canRight) return 'right'
   if (canDown) return 'down'
 
-  die(
-    `현재 pane(${rect.width}x${rect.height})을 더 쪼개면 승인 UI 를 읽을 수 없다 ` +
-      `(하한 ${MIN_COLS}x${MIN_ROWS}).\n` +
-      `이 워커는 위임하지 말고 대기 목록에 남긴 뒤, 먼저 끝난 워커의 pane 을 재사용할 것.`,
-  )
+  // 더 쪼갤 수 없다. 죽이지 않고 null 을 돌려주면 호출부가 새 탭으로 폴백한다.
+  return null
+}
+
+// ─── 배치: pane 분할 vs 새 탭 ───────────────────────────────────────────────
+//
+// 오케스트레이터는 **자기 pane 만** 쪼갤 수 있다. 그래서 반복 분할의 결과는 격자가
+// 아니라 계단이고, 계단은 격자 용량에 도달하지 못한다. 284x79 창의 이론상 격자
+// 용량은 floor(284/80)*floor(79/20)=9 칸이지만 계단으로는 3개가 한계다.
+// --ratio 로 워커마다 정확히 80칸씩 잘라도 284 = 80*3 + 44 라 역시 3개다.
+// **기하를 아무리 잘 계산해도 pane 분할로는 3을 못 넘는다.**
+//
+// 새 탭의 root pane 은 항상 전체 크기라 이 제약이 통째로 사라진다. 잃는 것은
+// 곁눈질뿐이고, 이 스킬의 감시는 어차피 시각이 아니라 agent read / status 다.
+// 그래서 기하가 허용하는 동안은 pane 을 쪼개 나란히 보여주고, 하한에 걸리면
+// 조용히 탭으로 넘어간다.
+
+function createTab(cwd, label) {
+  const args = ['tab', 'create', '--cwd', cwd, '--label', label, '--no-focus']
+  const ws = process.env.HERDR_WORKSPACE_ID
+  if (ws) args.push('--workspace', ws)
+  const res = herdrJson(args)
+  const paneId = res?.result?.root_pane?.pane_id
+  const tabId = res?.result?.tab?.tab_id ?? null
+  if (!paneId) {
+    die(`tab create 응답에서 root_pane.pane_id 를 못 찾았다:\n${JSON.stringify(res).slice(0, 400)}`)
+  }
+  return { paneId, tabId }
 }
 
 // ─── 명령: spawn ────────────────────────────────────────────────────────────
@@ -264,19 +287,41 @@ function cmdSpawn(opts) {
   const extraArgs = opts.extra ? opts.extra.trim().split(/\s+/) : []
   const agentArgs = [...(documented ? spec[mode] : []), ...extraArgs]
 
-  const direction = pickDirection(currentRect(), opts.direction)
+  const layoutMode = opts.layout ?? 'auto'
+  if (!['auto', 'pane', 'tab'].includes(layoutMode)) die(`--layout 은 auto | pane | tab`)
 
-  const split = herdrJson([
-    'pane', 'split', '--current',
-    '--direction', direction,
-    '--cwd', cwd,
-    '--no-focus',
-  ])
-  const paneId = split?.result?.pane?.pane_id
-  if (!paneId) die(`pane split 응답에서 pane_id 를 못 찾았다:\n${JSON.stringify(split).slice(0, 400)}`)
+  let paneId, tabId = null, placement, direction = null
+
+  if (layoutMode === 'tab') {
+    ;({ paneId, tabId } = createTab(cwd, name))
+    placement = 'tab'
+  } else {
+    direction = pickDirection(currentRect(), opts.direction)
+    if (direction) {
+      const split = herdrJson([
+        'pane', 'split', '--current',
+        '--direction', direction,
+        '--cwd', cwd,
+        '--no-focus',
+      ])
+      paneId = split?.result?.pane?.pane_id
+      if (!paneId) die(`pane split 응답에서 pane_id 를 못 찾았다:\n${JSON.stringify(split).slice(0, 400)}`)
+      placement = 'pane'
+    } else if (layoutMode === 'auto') {
+      ;({ paneId, tabId } = createTab(cwd, name))
+      placement = 'tab'
+    } else {
+      const r = currentRect()
+      die(
+        `--layout pane 인데 현재 pane(${r.width}x${r.height})을 더 쪼갤 수 없다 ` +
+          `(하한 ${MIN_COLS}x${MIN_ROWS}).\n` +
+          `--layout auto 를 쓰면 새 탭으로 넘어간다. 아니면 끝난 워커의 pane 을 회수할 것.`,
+      )
+    }
+  }
 
   if (!waitPaneReady(paneId)) {
-    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'pane_not_ready' })
+    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'pane_not_ready' })
     saveManifest(root, runId, m)
     die(
       `pane ${paneId} 가 셸 프롬프트에 도달하지 않는다.\n` +
@@ -309,7 +354,7 @@ function cmdSpawn(opts) {
   }
 
   if (lastErr) {
-    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'start_failed' })
+    m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'start_failed' })
     saveManifest(root, runId, m)
     die(
       `agent start 실패 (pane ${paneId} 는 살아 있다):\n${lastErr}\n` +
@@ -324,16 +369,24 @@ function cmdSpawn(opts) {
 
   // 분할 시점의 기하 검사는 스냅샷이다. 사용자가 그 사이에 창을 줄이면 하한을 밑도는
   // pane 이 나올 수 있다. 되돌릴 수는 없으니 실측치를 알려서 판단을 넘긴다.
+  // 탭 배치는 항상 전체 크기라 이 검사가 필요 없다.
   const after = herdrJson(['pane', 'layout', '--pane', paneId], { allowFail: true })
   const got = after?.result?.layout?.panes?.find((p) => p.pane_id === paneId)?.rect
-  const tooSmall = got && (got.width < MIN_COLS || got.height < MIN_ROWS)
+  const tooSmall = placement === 'pane' && got && (got.width < MIN_COLS || got.height < MIN_ROWS)
 
-  m.workers.push({ name, kind, mode, cwd, pane_id: paneId, documented, status: 'spawned' })
+  m.workers.push({ name, kind, mode, cwd, pane_id: paneId, tab_id: tabId, placement, documented, status: 'spawned' })
   saveManifest(root, runId, m)
 
-  console.log(`spawned  ${name}  kind=${kind} mode=${mode} pane=${paneId} dir=${direction}`)
+  const where = placement === 'tab' ? `tab=${tabId} pane=${paneId}` : `pane=${paneId} dir=${direction}`
+  console.log(`spawned  ${name}  kind=${kind} mode=${mode} ${where}`)
   console.log(`  cwd    ${cwd}`)
   console.log(`  result ${join(cwd, RESULT_SUBPATH, runId, `${name}.md`)}`)
+  if (placement === 'tab' && layoutMode === 'auto') {
+    console.log(
+      `  현재 pane 을 더 쪼개면 하한(${MIN_COLS}x${MIN_ROWS})을 밑돌아 새 탭에 띄웠다.\n` +
+        `    이 워커는 화면에 안 보인다. 감시는 status / agent read 로 한다.`,
+    )
+  }
   if (gatesCleared > 0) console.log(`  첫 실행 안내 게이트 ${gatesCleared}개를 닫았다`)
   if (tooSmall) {
     console.log(
@@ -538,8 +591,17 @@ function cmdCollect(opts) {
         `보고에 남기고, 겪은 것을 reference/kinds/ 에 기록할 후보로 삼을 것.`,
     )
   }
-  console.log(`\n살아있는 pane: ${m.workers.map((w) => w.pane_id).join(', ')}`)
-  console.log(`정리 여부는 사용자에게 확인할 것. 내가 만들지 않은 pane 은 닫지 않는다.`)
+  const panes = m.workers.filter((w) => w.placement !== 'tab')
+  const tabs = m.workers.filter((w) => w.placement === 'tab')
+  if (panes.length) console.log(`\n살아있는 pane: ${panes.map((w) => w.pane_id).join(', ')}`)
+  if (tabs.length) {
+    console.log(
+      `${panes.length ? '' : '\n'}이 run 이 만든 탭: ` +
+        `${tabs.map((w) => `${w.tab_id ?? '?'}(${w.name})`).join(', ')}\n` +
+        `탭 워커는 화면에 안 보이니 정리를 잊기 쉽다. 보고에 반드시 포함할 것.`,
+    )
+  }
+  console.log(`정리 여부는 사용자에게 확인할 것. 내가 만들지 않은 pane·탭은 닫지 않는다.`)
 }
 
 // ─── 진입점 ─────────────────────────────────────────────────────────────────
@@ -568,13 +630,14 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage:
-  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--extra "<flags>"]
+  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] [--direction right|down] [--layout auto|pane|tab] [--extra "<flags>"]
   orchestrate.mjs prompt  --run <id> --name <n> --body <briefing-file> [--timeout <ms>]
   orchestrate.mjs unstick --run <id> --name <n>
   orchestrate.mjs status  --run <id>
   orchestrate.mjs collect --run <id>
 
 공통: --root <path>   manifest 위치 (기본: 현재 디렉토리)
+--layout 기본값은 auto: pane 을 쪼개다가 하한(80x20)에 걸리면 새 탭으로 넘어간다.
 --extra 는 kind 기본 플래그 뒤에 덧붙는다 (예: --extra "-m gpt-5.6-luna").
 샌드박스·승인 플래그를 여기서 덮어쓰지 마라. blocked 감시가 깨진다.
 문서화된 kind: ${Object.keys(KINDS).join(', ')}`
