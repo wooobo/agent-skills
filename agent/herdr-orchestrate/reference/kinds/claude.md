@@ -16,6 +16,14 @@
 - 사용자가 중간에 눈으로 보고 직접 개입해야 할 때
 - 다른 저장소에서 독립적으로 오래 돌아야 할 때
 
+## 모델과 추론강도
+
+`spawn` 이 `--model claude-opus-5 --effort high` 를 붙인다. codex 와 달리 샌드박스·승인
+플래그는 없다 — Claude Code 는 자체 권한 모델을 쓴다.
+
+이번 run 만 다르게 하려면 `--extra` 로 뒤에 덧붙이고(뒤가 이긴다), 영구히 바꾸려면
+`orchestrate.mjs` 의 `KINDS.claude.model` 을 고친다.
+
 ## 브리핑이 codex보다 짧아도 되는 이유
 
 워커 claude는 `--cwd`로 지정된 디렉토리의 `CLAUDE.md`와 `.claude/skills/`를 **스스로
