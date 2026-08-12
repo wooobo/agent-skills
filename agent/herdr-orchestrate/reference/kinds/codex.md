@@ -7,7 +7,19 @@
 이 문서는 **판단이 필요한 것**만 다룬다: 무엇을 승인할지, 화면이 이상할 때 무슨 일이
 벌어진 건지.
 
-## 왜 그 플래그인가
+이 프로젝트의 **기본 kind** 다. 오케스트레이터가 대개 Claude Code 라서, 같은 벤더로
+또 위임하면 교차 검증 가치가 없고 내장 subagent 보다 비싸기만 하기 때문이다.
+
+## 모델과 추론강도
+
+`spawn` 이 `-m gpt-5.6-luna -c model_reasoning_effort="max"` 를 붙인다.
+codex 에는 effort 전용 플래그가 없어서 config 오버라이드를 쓴다.
+
+이 값은 `~/.codex/config.toml` 의 설정을 **덮어쓴다.** 위임한 작업은 대화보다 무겁게
+간다는 판단이다. 이번 run 만 다르게 하려면 `--extra` 로 뒤에 덧붙이면 되고, 뒤에 온
+플래그가 이긴다. 영구히 바꾸려면 `orchestrate.mjs` 의 `KINDS.codex.model` 을 고친다.
+
+## 왜 그 샌드박스·승인 플래그인가
 
 `spawn`이 `-s workspace-write -a on-request`로 띄운다. 사용자가 바꿔달라고 하면
 이 트레이드오프를 먼저 설명한다.

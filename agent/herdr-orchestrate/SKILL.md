@@ -38,7 +38,7 @@ kind별 스폰 플래그, 워커 탭 격자 배치, pane_id 파싱, 결과 파�
 그리고 run manifest(워커→cwd→pane 매핑). 매번 손으로 조립하면 틀리는 것들이다.
 
 ```
-orchestrate.mjs spawn   --run <id> --total <N> --name <n> --kind <k> --cwd <path> [--mode write|read-only]
+orchestrate.mjs spawn   --run <id> --total <N> --name <n> --cwd <path> [--kind <k>] [--mode write|read-only]
 orchestrate.mjs prompt  --run <id> --name <n> --body <브리핑파일>
 orchestrate.mjs unstick --run <id> --name <n>
 orchestrate.mjs status  --run <id>
@@ -66,7 +66,8 @@ manifest는 `<현재 프로젝트>/.claude/tmp/orchestrator/<run_id>/manifest.js
 없으면 **범용 모드**로 동작한다. 범용 모드에서는:
 
 - 대상은 현재 저장소 하나로 본다. 다른 디렉토리를 대상으로 삼으려면 사용자가 지정해야 한다
-- 워커 kind는 사용자에게 묻는다
+- 워커 kind는 **codex가 기본**이다. 묻지 말고 그대로 가되, 보고에 무엇으로 위임했는지
+  적는다. 사용자가 kind를 지정했거나 교차 검증이면 그게 우선한다
 - 브리핑은 [reference/briefing.md](reference/briefing.md)의 "최소 브리핑"을 쓴다
 - 레지스트리가 아예 없는 것이므로 "레지스트리에 없는 대상" 경고를 대상마다 반복하지
   마라. 최종 보고에 한 번만 적는다
@@ -145,13 +146,16 @@ pane을 쪼개게 되는데, 하필 그 워커가 승인 다이얼로그를 띄�
 
 ```bash
 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.mjs spawn \
-  --run <run_id> --total <워커 총수> --name <이름> --kind <kind> --cwd "<대상 절대경로>"
+  --run <run_id> --total <워커 총수> --name <이름> --cwd "<대상 절대경로>" [--kind <kind>]
 ```
 
 - 이름 규칙: `<대상약칭>-<작업약칭>` (예: `api-cta`, `web-i18n`).
   살아있는 워커와 이름이 겹치면 거부된다 — 겹치면 이후 `prompt`/`send-keys`가
   **남의 워커로 갈 수 있고**, 그 워커는 사용자가 쓰고 있는 것일 수 있다
 - 조사·리뷰만 시킬 때는 `--mode read-only`. 기본은 `write`
+- `--kind`를 생략하면 codex다. 모델과 추론강도는 kind마다 스크립트가 정해서 넘긴다
+  (codex `gpt-5.6-luna` max / claude `claude-opus-5` high). 네가 모델 이름을 지어내
+  `--extra`로 넘기지 마라 — 이번 run만 바꿔야 할 이유가 있을 때만 쓴다
 - **`--total`은 이번 run의 워커 총수다.** 첫 스폰 때 그 수만큼 격자를 미리 만든다.
   전원 스폰 전에 §1에서 대상을 다 정했으니 이 값을 알고 있어야 한다.
   틀리게 넘기면 나중에 자리가 모자라 탭이 쓸데없이 늘어난다

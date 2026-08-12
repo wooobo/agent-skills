@@ -12,7 +12,7 @@
 // SKILL.md 와 reference/ 가 정한다.
 //
 // usage:
-//   orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] --total <N> [--extra "<flags>"]
+//   orchestrate.mjs spawn   --run <id> --total <N> --name <n> --cwd <path> [--kind <k>] [--mode write|read-only] [--extra "<flags>"]
 //   orchestrate.mjs prompt  --run <id> --name <n> --body <file> [--timeout <ms>]
 //   orchestrate.mjs unstick --run <id> --name <n>
 //   orchestrate.mjs status  --run <id>
@@ -29,11 +29,20 @@ import { join, dirname } from 'node:path'
 // 근거는 reference/kinds/<kind>.md 에 있다. 값을 바꾸기 전에 거기부터 읽을 것.
 // 여기 없는 kind 도 스폰은 되지만 documented:false 로 기록되고 경고가 붙는다.
 
+// 아무것도 지정되지 않았을 때 쓰는 kind. 오케스트레이터가 Claude Code 일 때 워커로
+// 또 claude 를 쓰는 것은 대체로 낭비라 기본은 다른 벤더로 간다.
+// 근거는 reference/kinds/claude.md 의 "언제 claude 워커가 정당한가".
+const DEFAULT_KIND = 'codex'
+
 const KINDS = {
   codex: {
     // -a never 는 쓰지 않는다. blocked 신호가 사라져서 herdr 로 감시할 수 없게 된다.
     write: ['-s', 'workspace-write', '-a', 'on-request'],
     'read-only': ['-s', 'read-only', '-a', 'untrusted'],
+    // 모델·추론강도 기본값. codex 에는 effort 전용 플래그가 없어 config 오버라이드를 쓴다.
+    // 이 값은 ~/.codex/config.toml 을 덮어쓴다 — 위임한 작업은 대화보다 무겁게 간다는
+    // 판단이다. 이번 run 만 다르게 하려면 --extra 로 뒤에 덧붙이면 된다(뒤가 이긴다).
+    model: ['-m', 'gpt-5.6-luna', '-c', 'model_reasoning_effort="max"'],
     unstick: ['q'], // transcript 뷰어 탈출
     unstickNote: 'transcript 뷰어(↑/↓ to scroll, q to quit)에서 q 로 빠져나온다',
     // 첫 실행/업데이트 안내 게이트. 이걸 안 닫고 브리핑을 보내면 게이트가 텍스트를
@@ -41,9 +50,10 @@ const KINDS = {
     gates: [/press enter to continue/i],
   },
   claude: {
-    // claude 워커는 cwd 의 CLAUDE.md / .claude/skills 를 스스로 읽는다. 플래그 불필요.
+    // claude 워커는 cwd 의 CLAUDE.md / .claude/skills 를 스스로 읽는다. 샌드박스 플래그 불필요.
     write: [],
     'read-only': [],
+    model: ['--model', 'claude-opus-5', '--effort', 'high'],
     unstick: ['ctrl+o'], // showing detailed transcript 토글 (미검증)
     unstickNote: 'showing detailed transcript 를 ctrl+o 로 토글한다 (미검증 — 실패 시 esc)',
     gates: [/press enter to continue/i, /do you trust the files in this folder/i],
@@ -318,7 +328,8 @@ function realpath(p) {
 // ─── 명령: spawn ────────────────────────────────────────────────────────────
 
 function cmdSpawn(opts) {
-  const { root, run: runId, name, kind, cwd } = requireOpts(opts, ['run', 'name', 'kind', 'cwd'])
+  const { root, run: runId, name, cwd } = requireOpts(opts, ['run', 'name', 'cwd'])
+  const kind = opts.kind ?? DEFAULT_KIND
   const mode = opts.mode ?? 'write'
 
   if (!/^[a-z][a-z0-9_-]{0,31}$/.test(name)) {
@@ -358,7 +369,9 @@ function cmdSpawn(opts) {
   // 기본값이 아니라 이번 run 에서만 바꾸고 싶은 것에 쓴다. 샌드박스/승인 플래그를
   // 여기서 덮어쓰면 blocked 감시가 깨지므로 그런 용도로는 쓰지 마라.
   const extraArgs = opts.extra ? opts.extra.trim().split(/\s+/) : []
-  const agentArgs = [...(documented ? spec[mode] : []), ...extraArgs]
+  const agentArgs = documented
+    ? [...spec[mode], ...(spec.model ?? []), ...extraArgs]
+    : [...extraArgs]
 
   // ── 슬롯 할당 ──
   //
@@ -702,7 +715,7 @@ function parseArgs(argv) {
 }
 
 const USAGE = `usage:
-  orchestrate.mjs spawn   --run <id> --name <n> --kind <k> --cwd <path> [--mode write|read-only] --total <N> [--extra "<flags>"]
+  orchestrate.mjs spawn   --run <id> --total <N> --name <n> --cwd <path> [--kind <k>] [--mode write|read-only] [--extra "<flags>"]
   orchestrate.mjs prompt  --run <id> --name <n> --body <briefing-file> [--timeout <ms>]
   orchestrate.mjs unstick --run <id> --name <n>
   orchestrate.mjs status  --run <id>
@@ -712,7 +725,9 @@ const USAGE = `usage:
 --total 은 이번 run 의 워커 총수. 첫 스폰 때 그 수만큼 격자를 미리 만든다
 (2→세로2, 3→세로3, 4→2x2, 5→2/2/1, 6→3x2). 6 을 넘으면 새 탭을 연다.
 호출자 pane 은 쪼개지 않는다 — 워커는 전용 탭에만 들어간다.
---extra 는 kind 기본 플래그 뒤에 덧붙는다 (예: --extra "-m gpt-5.6-luna").
+--kind 를 생략하면 ${DEFAULT_KIND}. 모델·추론강도는 kind 마다 아래 기본값으로 나간다:
+${Object.entries(KINDS).map(([k, v]) => `  ${k.padEnd(7)} ${(v.model ?? []).join(' ') || '(지정 안 함)'}`).join('\n')}
+--extra 는 그 뒤에 덧붙는다 — 뒤에 온 플래그가 이기므로 이번 run 만 바꿀 때 쓴다.
 샌드박스·승인 플래그를 여기서 덮어쓰지 마라. blocked 감시가 깨진다.
 문서화된 kind: ${Object.keys(KINDS).join(', ')}`
 
